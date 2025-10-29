@@ -26,6 +26,12 @@ app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the Task Tracker API' });
 });
 
+// Welcome route with logging
+app.get('/welcome', (req, res) => {
+  console.log(`Request received: ${req.method} ${req.path}`);
+  res.json({ message: 'Welcome to the Task Tracker API' });
+});
+
 // JWT middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -56,6 +62,8 @@ const initDB = async () => {
         title VARCHAR(255) NOT NULL,
         description TEXT,
         completed BOOLEAN DEFAULT FALSE,
+        due_date DATE,
+        priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
         user_id INTEGER REFERENCES users(id)
       );
     `);
@@ -120,10 +128,10 @@ app.get('/tasks', authenticateToken, async (req, res) => {
 
 app.post('/tasks', authenticateToken, async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, dueDate, priority } = req.body;
     const newTask = await pool.query(
-      'INSERT INTO tasks (title, description, completed, user_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title, description || '', false, req.user.id]
+      'INSERT INTO tasks (title, description, completed, due_date, priority, user_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [title, description || '', false, dueDate || null, priority || 'medium', req.user.id]
     );
     res.status(201).json(newTask.rows[0]);
   } catch (err) {
@@ -134,10 +142,10 @@ app.post('/tasks', authenticateToken, async (req, res) => {
 app.put('/tasks/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, completed } = req.body;
+    const { title, description, completed, dueDate, priority } = req.body;
     const updatedTask = await pool.query(
-      'UPDATE tasks SET title = $1, description = $2, completed = $3 WHERE id = $4 AND user_id = $5 RETURNING *',
-      [title, description, completed, id, req.user.id]
+      'UPDATE tasks SET title = $1, description = $2, completed = $3, due_date = $4, priority = $5 WHERE id = $6 AND user_id = $7 RETURNING *',
+      [title, description, completed, dueDate || null, priority || 'medium', id, req.user.id]
     );
     if (updatedTask.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
     res.json(updatedTask.rows[0]);
@@ -154,6 +162,40 @@ app.delete('/tasks/:id', authenticateToken, async (req, res) => {
     res.json({ message: 'Task deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
+// Profile routes (protected)
+app.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await pool.query('SELECT id, username, email, date_of_birth, gender FROM users WHERE id = $1', [req.user.id]);
+    if (user.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json(user.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+app.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    const { username, email } = req.body;
+    if (!username || !email) {
+      return res.status(400).json({ error: 'Username and email are required' });
+    }
+
+    // Check if username or email is already taken by another user
+    const existingUser = await pool.query('SELECT * FROM users WHERE (username = $1 OR email = $2) AND id != $3', [username, email, req.user.id]);
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: 'Username or email already exists' });
+    }
+
+    const updatedUser = await pool.query(
+      'UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING id, username, email, date_of_birth, gender',
+      [username, email, req.user.id]
+    );
+    res.json(updatedUser.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 

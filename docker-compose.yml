@@ -7,6 +7,11 @@ services:
       - "5000:5000"
     environment:
       - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=tasktracker
+      - DB_USER=user
+      - DB_PASSWORD=password
     depends_on:
       - db
 
@@ -24,7 +29,7 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
