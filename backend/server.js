@@ -21,6 +21,11 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json());
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the Task Tracker API' });
+});
+
 // JWT middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
